@@ -8,7 +8,7 @@ import asyncio
 from webrtc.zed_server import *
 
 class OpenTeleVision:
-    def __init__(self, img_shape, shm_name, queue, toggle_streaming, stream_mode="image", cert_file="./cert.pem", key_file="./key.pem", ngrok=False):
+    def __init__(self, img_shape, shm_name, queue, toggle_streaming, stream_mode="image", cert_file="./cert.pem", key_file="./key.pem", ngrok=False, port=0):
         # self.app=Vuer()
         self.img_shape = (img_shape[0], 2*img_shape[1], 3)
         self.img_height, self.img_width = img_shape[:2]
@@ -16,7 +16,9 @@ class OpenTeleVision:
         if ngrok:
             self.app = Vuer(host='0.0.0.0', queries=dict(grid=False), queue_len=3)
         else:
-            self.app = Vuer(host='0.0.0.0', cert=cert_file, key=key_file, queries=dict(grid=False), queue_len=3)
+            self.app = Vuer(host='127.0.0.1', cert=cert_file, key=key_file, queries=dict(grid=False), queue_len=3)
+            # print(f'port={port}')
+            # self.app = Vuer(host='0.0.0.0', cert=cert_file, key=key_file, queries=dict(grid=False), queue_len=3, port=port)
 
         self.app.add_handler("HAND_MOVE")(self.on_hand_move)
         self.app.add_handler("CAMERA_MOVE")(self.on_cam_move)
@@ -245,9 +247,20 @@ if __name__ == "__main__":
     shm_name = shm.name
     img_array = np.ndarray((img_shape[0], img_shape[1], 3), dtype=np.uint8, buffer=shm.buf)
 
-    tv = OpenTeleVision(resolution_cropped, cert_file="../cert.pem", key_file="../key.pem")
+    # 用于调试
+    shm = shared_memory.SharedMemory(create=True, size=np.prod(img_shape) * np.uint8().itemsize)    
+    image_queue = Queue()
+    toggle_streaming = Event()
+
+    tv = OpenTeleVision(resolution_cropped, shm.name, image_queue, toggle_streaming,
+                        cert_file="/home/sense/workspace/TeleVision/teleop/certificate.pem", 
+                        key_file="/home/sense/workspace/TeleVision/teleop/localhost-key.pem")
+    # tv = OpenTeleVision(resolution_cropped, cert_file="../cert.pem", key_file="../key.pem", ngrok=True)
+
+    print('seccess')
     while True:
         # print(tv.left_landmarks)
         # print(tv.left_hand)
         # tv.modify_shared_image(random=True)
         time.sleep(1)
+

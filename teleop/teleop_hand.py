@@ -18,6 +18,17 @@ import time
 import yaml
 from multiprocessing import Array, Process, shared_memory, Queue, Manager, Event, Semaphore
 
+import atexit
+import mmap
+
+def cleanup_shared_memory(shm):
+    if shm is not None:
+        shm.close()
+        shm.unlink()
+
+# atexit.register(cleanup_shared_memory, self.shm)
+
+
 class VuerTeleop:
     def __init__(self, config_file_path):
         self.resolution = (720, 1280)
@@ -32,10 +43,19 @@ class VuerTeleop:
         self.img_array = np.ndarray((self.img_shape[0], self.img_shape[1], 3), dtype=np.uint8, buffer=self.shm.buf)
         image_queue = Queue()
         toggle_streaming = Event()
-        self.tv = OpenTeleVision(self.resolution_cropped, self.shm.name, image_queue, toggle_streaming)
+
+        # self.tv = OpenTeleVision(self.resolution_cropped, self.shm.name, image_queue, toggle_streaming)
+
+        self.tv = OpenTeleVision(self.resolution_cropped, self.shm.name, image_queue, toggle_streaming, ngrok=True)
+        # self.tv = OpenTeleVision(self.resolution_cropped, self.shm.name, image_queue, toggle_streaming,
+        #                          cert_file="/home/sense/workspace/TeleVision/teleop/certificate.pem", 
+        #                          key_file="/home/sense/workspace/TeleVision/teleop/localhost-key.pem", port=8012)
+        # # print("Server started successfully")
+
         self.processor = VuerPreprocessor()
 
         RetargetingConfig.set_default_urdf_dir('../assets')
+
         with Path(config_file_path).open('r') as f:
             cfg = yaml.safe_load(f)
         left_retargeting_config = RetargetingConfig.from_dict(cfg['left'])
@@ -56,6 +76,10 @@ class VuerTeleop:
         right_qpos = self.right_retargeting.retarget(right_hand_mat[tip_indices])[[4, 5, 6, 7, 10, 11, 8, 9, 0, 1, 2, 3]]
 
         return head_rmat, left_pose, right_pose, left_qpos, right_qpos
+    
+    def cleanup(self):
+        atexit.register(cleanup_shared_memory, self.shm)
+    
 
 class Sim:
     def __init__(self,
@@ -253,13 +277,18 @@ class Sim:
 
 if __name__ == '__main__':
     teleoperator = VuerTeleop('inspire_hand.yml')
-    simulator = Sim()
+    simulator = Sim(print_freq=False)
+
 
     try:
         while True:
+            start_step = time.time()
             head_rmat, left_pose, right_pose, left_qpos, right_qpos = teleoperator.step()
             left_img, right_img = simulator.step(head_rmat, left_pose, right_pose, left_qpos, right_qpos)
             np.copyto(teleoperator.img_array, np.hstack((left_img, right_img)))
+            print('step fre:', 1 / (time.time() - start_step))
+
     except KeyboardInterrupt:
         simulator.end()
+        teleoperator.cleanup()
         exit(0)
