@@ -1,3 +1,6 @@
+import os
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'  # 添加这行来帮助调试 CUDA 错误
+
 from isaacgym import gymapi
 from isaacgym import gymutil
 from isaacgym import gymtorch
@@ -19,7 +22,6 @@ import yaml
 from multiprocessing import Array, Process, shared_memory, Queue, Manager, Event, Semaphore
 
 import atexit
-import mmap
 
 def cleanup_shared_memory(shm):
     if shm is not None:
@@ -30,17 +32,19 @@ def cleanup_shared_memory(shm):
 
 
 class VuerTeleop:
-    def __init__(self, config_file_path):
-        self.resolution = (720, 1280)
+    def __init__(self, config_file_path, resolution = (720, 1280)):
+        self.resolution = resolution
         self.crop_size_w = 0
         self.crop_size_h = 0
         self.resolution_cropped = (self.resolution[0]-self.crop_size_h, self.resolution[1]-2*self.crop_size_w)
+        print(self.resolution_cropped)
 
         self.img_shape = (self.resolution_cropped[0], 2 * self.resolution_cropped[1], 3)
         self.img_height, self.img_width = self.resolution_cropped[:2]
 
         self.shm = shared_memory.SharedMemory(create=True, size=np.prod(self.img_shape) * np.uint8().itemsize)
         self.img_array = np.ndarray((self.img_shape[0], self.img_shape[1], 3), dtype=np.uint8, buffer=self.shm.buf)
+        
         image_queue = Queue()
         toggle_streaming = Event()
 
@@ -48,9 +52,9 @@ class VuerTeleop:
 
         self.tv = OpenTeleVision(self.resolution_cropped, self.shm.name, image_queue, toggle_streaming, ngrok=True)
         # self.tv = OpenTeleVision(self.resolution_cropped, self.shm.name, image_queue, toggle_streaming,
-        #                          cert_file="/home/sense/workspace/TeleVision/teleop/certificate.pem", 
-        #                          key_file="/home/sense/workspace/TeleVision/teleop/localhost-key.pem", port=8012)
-        # # print("Server started successfully")
+        #                          cert_file="/home/sense/.local/share/mkcert/web.crt", 
+        #                          key_file="/home/sense/.local/share/mkcert/web.key")  # port 8012
+        # print("Server started successfully")
 
         self.processor = VuerPreprocessor()
 
@@ -82,10 +86,10 @@ class VuerTeleop:
     
 
 class Sim:
-    def __init__(self,
+    def __init__(self, resolution = (720, 1280),
                  print_freq=False):
         self.print_freq = print_freq
-
+        
         # initialize gym
         self.gym = gymapi.acquire_gym()
 
@@ -104,12 +108,14 @@ class Sim:
         sim_params.physx.friction_correlation_distance = 0.0005
         sim_params.physx.rest_offset = 0.0
         sim_params.physx.use_gpu = True
-        sim_params.use_gpu_pipeline = False
+        sim_params.use_gpu_pipeline = False  # 启用 GPU 管道
+
+        self.device = torch.device("cuda" if sim_params.use_gpu_pipeline else "cpu")
+        print(self.device, torch.cuda.is_available())
 
         self.sim = self.gym.create_sim(0, 0, gymapi.SIM_PHYSX, sim_params)
         if self.sim is None:
-            print("*** Failed to create sim")
-            quit()
+            raise RuntimeError("Failed to create sim")
 
         plane_params = gymapi.PlaneParams()
         plane_params.distance = 0.0
@@ -186,6 +192,12 @@ class Sim:
         self.left_root_states = self.root_states[left_idx]
         self.right_root_states = self.root_states[right_idx]
 
+        # 确保张量在正确的设备上
+        if sim_params.use_gpu_pipeline:
+            self.root_states = self.root_states.cuda()
+            self.left_root_states = self.left_root_states.cuda()
+            self.right_root_states = self.right_root_states.cuda()
+
         # create default viewer
         self.viewer = self.gym.create_viewer(self.sim, gymapi.CameraProperties())
         if self.viewer is None:
@@ -202,8 +214,8 @@ class Sim:
 
         # create left 1st preson viewer
         camera_props = gymapi.CameraProperties()
-        camera_props.width = 1280
-        camera_props.height = 720
+        camera_props.width = resolution[1]
+        camera_props.height = resolution[0]
         self.left_camera_handle = self.gym.create_camera_sensor(self.env, camera_props)
         self.gym.set_camera_location(self.left_camera_handle,
                                      self.env,
@@ -212,8 +224,8 @@ class Sim:
 
         # create right 1st preson viewer
         camera_props = gymapi.CameraProperties()
-        camera_props.width = 1280
-        camera_props.height = 720
+        camera_props.width = resolution[1]
+        camera_props.height = resolution[0]
         self.right_camera_handle = self.gym.create_camera_sensor(self.env, camera_props)
         self.gym.set_camera_location(self.right_camera_handle,
                                      self.env,
@@ -221,74 +233,146 @@ class Sim:
                                      gymapi.Vec3(*(self.cam_pos + self.right_cam_offset + self.cam_lookat_offset)))
 
     def step(self, head_rmat, left_pose, right_pose, left_qpos, right_qpos):
-
         if self.print_freq:
             start = time.time()
 
-        self.left_root_states[0:7] = torch.tensor(left_pose, dtype=float)
-        self.right_root_states[0:7] = torch.tensor(right_pose, dtype=float)
-        self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(self.root_states))
+        try:
+            # 1. 更新手部状态
+            left_pose_tensor = torch.tensor(left_pose, dtype=torch.float32, device=self.device)
+            right_pose_tensor = torch.tensor(right_pose, dtype=torch.float32, device=self.device)
+            
+            self.left_root_states[0:7] = left_pose_tensor
+            self.right_root_states[0:7] = right_pose_tensor
+            
+            # 确保数据同步
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            
+            self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(self.root_states))
 
-        left_states = np.zeros(self.dof, dtype=gymapi.DofState.dtype)
-        left_states['pos'] = left_qpos
-        self.gym.set_actor_dof_states(self.env, self.left_handle, left_states, gymapi.STATE_POS)
+            # 2. 更新关节角度
+            left_states = np.zeros(self.dof, dtype=gymapi.DofState.dtype)
+            left_states['pos'] = left_qpos
+            self.gym.set_actor_dof_states(self.env, self.left_handle, left_states, gymapi.STATE_POS)
 
-        right_states = np.zeros(self.dof, dtype=gymapi.DofState.dtype)
-        right_states['pos'] = right_qpos
-        self.gym.set_actor_dof_states(self.env, self.right_handle, right_states, gymapi.STATE_POS)
+            right_states = np.zeros(self.dof, dtype=gymapi.DofState.dtype)
+            right_states['pos'] = right_qpos
+            self.gym.set_actor_dof_states(self.env, self.right_handle, right_states, gymapi.STATE_POS)
 
-        # step the physics
-        self.gym.simulate(self.sim)
-        self.gym.fetch_results(self.sim, True)
-        self.gym.step_graphics(self.sim)
-        self.gym.render_all_camera_sensors(self.sim)
-        self.gym.refresh_actor_root_state_tensor(self.sim)
+            # 3. 物理模拟
+            self.gym.simulate(self.sim)
+            
+            # 4. 等待物理模拟完成
+            self.gym.fetch_results(self.sim, True)
+            
+            # 5. 更新图形
+            self.gym.step_graphics(self.sim)
+            
+            # 6. 渲染相机
+            self.gym.render_all_camera_sensors(self.sim)
 
-        curr_lookat_offset = self.cam_lookat_offset @ head_rmat.T
-        curr_left_offset = self.left_cam_offset @ head_rmat.T
-        curr_right_offset = self.right_cam_offset @ head_rmat.T
+            curr_lookat_offset = self.cam_lookat_offset @ head_rmat.T
+            curr_left_offset = self.left_cam_offset @ head_rmat.T
+            curr_right_offset = self.right_cam_offset @ head_rmat.T
 
-        self.gym.set_camera_location(self.left_camera_handle,
-                                     self.env,
-                                     gymapi.Vec3(*(self.cam_pos + curr_left_offset)),
-                                     gymapi.Vec3(*(self.cam_pos + curr_left_offset + curr_lookat_offset)))
-        self.gym.set_camera_location(self.right_camera_handle,
-                                     self.env,
-                                     gymapi.Vec3(*(self.cam_pos + curr_right_offset)),
-                                     gymapi.Vec3(*(self.cam_pos + curr_right_offset + curr_lookat_offset)))
-        left_image = self.gym.get_camera_image(self.sim, self.env, self.left_camera_handle, gymapi.IMAGE_COLOR)
-        right_image = self.gym.get_camera_image(self.sim, self.env, self.right_camera_handle, gymapi.IMAGE_COLOR)
-        left_image = left_image.reshape(left_image.shape[0], -1, 4)[..., :3]
-        right_image = right_image.reshape(right_image.shape[0], -1, 4)[..., :3]
+            self.gym.set_camera_location(self.left_camera_handle,
+                                         self.env,
+                                         gymapi.Vec3(*(self.cam_pos + curr_left_offset)),
+                                         gymapi.Vec3(*(self.cam_pos + curr_left_offset + curr_lookat_offset)))
+            self.gym.set_camera_location(self.right_camera_handle,
+                                         self.env,
+                                         gymapi.Vec3(*(self.cam_pos + curr_right_offset)),
+                                         gymapi.Vec3(*(self.cam_pos + curr_right_offset + curr_lookat_offset)))
 
-        self.gym.draw_viewer(self.viewer, self.sim, True)
-        self.gym.sync_frame_time(self.sim)
+            # 8. 获取相机图像
+            left_image = self.gym.get_camera_image(self.sim, self.env, self.left_camera_handle, gymapi.IMAGE_COLOR)
+            right_image = self.gym.get_camera_image(self.sim, self.env, self.right_camera_handle, gymapi.IMAGE_COLOR)
+            
+            # 9. 重塑图像
+            left_image = left_image.reshape(left_image.shape[0], -1, 4)[..., :3]
+            right_image = right_image.reshape(right_image.shape[0], -1, 4)[..., :3]
 
-        if self.print_freq:
-            end = time.time()
-            print('Frequency:', 1 / (end - start))
+            # 10. 更新视图
+            self.gym.draw_viewer(self.viewer, self.sim, True)
+            
+            # 11. 同步帧时间
+            self.gym.sync_frame_time(self.sim)
+            
+            # 12. 刷新状态张量
+            self.gym.refresh_actor_root_state_tensor(self.sim)
 
-        return left_image, right_image
+            if self.print_freq:
+                end = time.time()
+                print('Frequency:', 1 / (end - start))
+
+            return left_image, right_image
+
+        except Exception as e:
+            print(f"Error in step: {str(e)}")
+            raise
+
+    def cleanup(self):
+        try:
+            if hasattr(self, 'viewer') and self.viewer is not None:
+                self.gym.destroy_viewer(self.viewer)
+                self.viewer = None
+
+            if hasattr(self, 'sim') and self.sim is not None:
+                self.gym.destroy_sim(self.sim)
+                self.sim = None
+
+            if hasattr(self, 'gym'):
+                self.gym = None
+
+            # 清理 CUDA 缓存
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception as e:
+            print(f"Error during cleanup: {str(e)}")
+
+    def __del__(self):
+        self.cleanup()
 
     def end(self):
-        self.gym.destroy_viewer(self.viewer)
-        self.gym.destroy_sim(self.sim)
+        self.cleanup()
 
 
 if __name__ == '__main__':
-    teleoperator = VuerTeleop('inspire_hand.yml')
-    simulator = Sim(print_freq=False)
-
+    # resolution=(640, 960)
+    resolution=(720, 1280)
+    teleoperator = None
+    simulator = None
 
     try:
+        # 清理 CUDA 缓存
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            
+        teleoperator = VuerTeleop('inspire_hand.yml', resolution=resolution)
+        simulator = Sim(resolution=resolution, print_freq=False)
+
+        f=0
         while True:
             start_step = time.time()
             head_rmat, left_pose, right_pose, left_qpos, right_qpos = teleoperator.step()
             left_img, right_img = simulator.step(head_rmat, left_pose, right_pose, left_qpos, right_qpos)
             np.copyto(teleoperator.img_array, np.hstack((left_img, right_img)))
-            print('step fre:', 1 / (time.time() - start_step))
+            if f == 0:
+                print(left_img.shape)
+            if f%10 == 0:
+                print('step fre:', 1 / (time.time() - start_step))
+            f=f+1
 
     except KeyboardInterrupt:
-        simulator.end()
-        teleoperator.cleanup()
+        print("\nReceived keyboard interrupt, cleaning up...")
+    except Exception as e:
+        print(f"\nError occurred: {str(e)}")
+    finally:
+        if simulator is not None:
+            simulator.cleanup()
+        if teleoperator is not None:
+            teleoperator.cleanup()
+        # 最后清理 CUDA 缓存
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         exit(0)

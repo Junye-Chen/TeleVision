@@ -16,7 +16,7 @@ class OpenTeleVision:
         if ngrok:
             self.app = Vuer(host='0.0.0.0', queries=dict(grid=False), queue_len=3)
         else:
-            self.app = Vuer(host='127.0.0.1', cert=cert_file, key=key_file, queries=dict(grid=False), queue_len=3)
+            self.app = Vuer(host='0.0.0.0', cert=cert_file, key=key_file, queries=dict(grid=False), queue_len=3)
             # print(f'port={port}')
             # self.app = Vuer(host='0.0.0.0', cert=cert_file, key=key_file, queries=dict(grid=False), queue_len=3, port=port)
 
