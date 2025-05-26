@@ -50,32 +50,43 @@ class VuerTeleop:
 
         # self.tv = OpenTeleVision(self.resolution_cropped, self.shm.name, image_queue, toggle_streaming)
 
-        self.tv = OpenTeleVision(self.resolution_cropped, self.shm.name, image_queue, toggle_streaming, ngrok=True)
+        self.tv = OpenTeleVision(self.resolution_cropped, self.shm.name, image_queue, toggle_streaming, ngrok=True)  # 从事件中获取图像和姿态位置
         # self.tv = OpenTeleVision(self.resolution_cropped, self.shm.name, image_queue, toggle_streaming,
         #                          cert_file="/home/sense/.local/share/mkcert/web.crt", 
         #                          key_file="/home/sense/.local/share/mkcert/web.key")  # port 8012
         # print("Server started successfully")
 
-        self.processor = VuerPreprocessor()
+        self.processor = VuerPreprocessor()  # 用来求解不同的部位坐标
 
         RetargetingConfig.set_default_urdf_dir('../assets')
 
         with Path(config_file_path).open('r') as f:
             cfg = yaml.safe_load(f)
+
         left_retargeting_config = RetargetingConfig.from_dict(cfg['left'])
         right_retargeting_config = RetargetingConfig.from_dict(cfg['right'])
+
         self.left_retargeting = left_retargeting_config.build()
         self.right_retargeting = right_retargeting_config.build()
 
     def step(self):
+        """
+        return:
+            head_rmat: 头部旋转矩阵
+            left_pose: 左手位姿（位置+方向）
+            right_pose: 右手位姿（位置+方向）
+            left_qpos: 左手关节位置
+            right_qpos: 右手关节位置    
+        """
         head_mat, left_wrist_mat, right_wrist_mat, left_hand_mat, right_hand_mat = self.processor.process(self.tv)
 
-        head_rmat = head_mat[:3, :3]
+        head_rmat = head_mat[:3, :3]  # 提取头部姿态
 
         left_pose = np.concatenate([left_wrist_mat[:3, 3] + np.array([-0.6, 0, 1.6]),
                                     rotations.quaternion_from_matrix(left_wrist_mat[:3, :3])[[1, 2, 3, 0]]])
         right_pose = np.concatenate([right_wrist_mat[:3, 3] + np.array([-0.6, 0, 1.6]),
                                      rotations.quaternion_from_matrix(right_wrist_mat[:3, :3])[[1, 2, 3, 0]]])
+        
         left_qpos = self.left_retargeting.retarget(left_hand_mat[tip_indices])[[4, 5, 6, 7, 10, 11, 8, 9, 0, 1, 2, 3]]
         right_qpos = self.right_retargeting.retarget(right_hand_mat[tip_indices])[[4, 5, 6, 7, 10, 11, 8, 9, 0, 1, 2, 3]]
 
@@ -185,6 +196,7 @@ class Sim:
         self.gym.set_actor_dof_states(self.env, self.right_handle, np.zeros(self.dof, gymapi.DofState.dtype),
                                       gymapi.STATE_ALL)
         right_idx = self.gym.get_actor_index(self.env, self.right_handle, gymapi.DOMAIN_SIM)
+
 
         self.root_state_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
         self.gym.refresh_actor_root_state_tensor(self.sim)
@@ -354,9 +366,10 @@ if __name__ == '__main__':
         f=0
         while True:
             start_step = time.time()
-            head_rmat, left_pose, right_pose, left_qpos, right_qpos = teleoperator.step()
-            left_img, right_img = simulator.step(head_rmat, left_pose, right_pose, left_qpos, right_qpos)
+            head_rmat, left_pose, right_pose, left_qpos, right_qpos = teleoperator.step()  # 从事件中获取头部姿态和手部姿态
+            left_img, right_img = simulator.step(head_rmat, left_pose, right_pose, left_qpos, right_qpos)  # 更新模拟器状态并渲染图像
             np.copyto(teleoperator.img_array, np.hstack((left_img, right_img)))
+
             if f == 0:
                 print(left_img.shape)
             if f%10 == 0:

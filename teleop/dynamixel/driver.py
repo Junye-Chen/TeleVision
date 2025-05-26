@@ -3,6 +3,8 @@ from threading import Event, Lock, Thread
 from typing import Protocol, Sequence
 
 import numpy as np
+
+# TODO: 这里用到了机器人的sdk
 #! dynamixel_sdk
 from dynamixel_sdk.group_sync_read import GroupSyncRead
 from dynamixel_sdk.group_sync_write import GroupSyncWrite
@@ -98,6 +100,7 @@ class DynamixelDriver(DynamixelDriverProtocol):
         self, ids: Sequence[int], port: str = "/dev/ttyUSB0", baudrate: int = 57600
     ):
         """Initialize the DynamixelDriver class.
+        通过多线程的方式实现了对多个 Dynamixel 伺服电机的控制通信，包括设置目标角度、读取当前角度以及管理扭矩状态。
 
         Args:
             ids (Sequence[int]): A list of IDs for the Dynamixel servos.
@@ -114,6 +117,7 @@ class DynamixelDriver(DynamixelDriverProtocol):
         self._portHandler = PortHandler(port)
         self._packetHandler = PacketHandler(2.0)
 
+        # 用于同步读取和写入多个伺服电机的数据
         self._groupSyncRead = GroupSyncRead(
             self._portHandler,
             self._packetHandler,
@@ -128,6 +132,7 @@ class DynamixelDriver(DynamixelDriverProtocol):
         )
 
         # Open the port and set the baudrate
+        # 设置串口通信
         if not self._portHandler.openPort():
             raise RuntimeError("Failed to open the port")
 
@@ -135,6 +140,7 @@ class DynamixelDriver(DynamixelDriverProtocol):
             raise RuntimeError(f"Failed to change the baudrate, {baudrate}")
 
         # Add parameters for each Dynamixel servo to the group sync read
+        # 将每个伺服电机的ID 参数添加到同步读取组中
         for dxl_id in self._ids:
             if not self._groupSyncRead.addParam(dxl_id):
                 raise RuntimeError(
@@ -142,16 +148,17 @@ class DynamixelDriver(DynamixelDriverProtocol):
                 )
 
         # Disable torque for each Dynamixel servo
+
         self._torque_enabled = False
         try:
-            self.set_torque_mode(self._torque_enabled)
+            self.set_torque_mode(self._torque_enabled)  # 禁用扭矩模式
         except Exception as e:
             print(f"port: {port}, {e}")
 
         # control the thread
         self._stop_thread = Event()
 
-        self._start_reading_thread()
+        self._start_reading_thread()  # 启动读取线程
 
     def set_joints(self, joint_angles: Sequence[float]):
         if len(joint_angles) != len(self._ids):
@@ -174,6 +181,7 @@ class DynamixelDriver(DynamixelDriverProtocol):
             ]
 
             # Add goal position value to the Syncwrite parameter storage
+            # 将目标位置值添加到每个伺服电机，写入参数存储中
             dxl_addparam_result = self._groupSyncWrite.addParam(
                 dxl_id, param_goal_position
             )
@@ -183,12 +191,12 @@ class DynamixelDriver(DynamixelDriverProtocol):
                 )
 
         # Syncwrite goal position
-        dxl_comm_result = self._groupSyncWrite.txPacket()
+        dxl_comm_result = self._groupSyncWrite.txPacket() # 发送数据
         if dxl_comm_result != COMM_SUCCESS:
             raise RuntimeError("Failed to syncwrite goal position")
 
         # Clear syncwrite parameter storage
-        self._groupSyncWrite.clearParam()
+        self._groupSyncWrite.clearParam() # 清除写入参数
 
     def torque_enabled(self) -> bool:
         return self._torque_enabled
@@ -215,7 +223,7 @@ class DynamixelDriver(DynamixelDriverProtocol):
         # self._reading_thread.start()
 
     def _read_joint_angles(self):
-        # Continuously read joint angles and update the joint_angles array
+        # 连续读取关节角度并更新joint_angles数组
         while not self._stop_thread.is_set():
             time.sleep(0.001)
             with self._lock:
@@ -241,7 +249,7 @@ class DynamixelDriver(DynamixelDriverProtocol):
             # self._groupSyncRead.clearParam() # TODO what does this do? should i add it
 
     def get_joints(self) -> np.ndarray:
-        # Return a copy of the joint_angles array to avoid race conditions
+        # 返回joint_angles数组的副本，避免竞争条件
         while self._joint_angles is None:
             time.sleep(0.1)
         with self._lock:

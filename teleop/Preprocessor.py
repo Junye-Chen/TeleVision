@@ -8,19 +8,28 @@ from motion_utils import mat_update, fast_mat_inv
 class VuerPreprocessor:
     def __init__(self):
         self.vuer_head_mat = np.array([[1, 0, 0, 0],
-                                  [0, 1, 0, 1.5],
-                                  [0, 0, 1, -0.2],
-                                  [0, 0, 0, 1]])
+                                       [0, 1, 0, 1.5],
+                                       [0, 0, 1, -0.2],
+                                       [0, 0, 0, 1]])
         self.vuer_right_wrist_mat = np.array([[1, 0, 0, 0.5],
-                                         [0, 1, 0, 1],
-                                         [0, 0, 1, -0.5],
-                                         [0, 0, 0, 1]])
+                                              [0, 1, 0, 1],
+                                              [0, 0, 1, -0.5],
+                                              [0, 0, 0, 1]])
         self.vuer_left_wrist_mat = np.array([[1, 0, 0, -0.5],
-                                        [0, 1, 0, 1],
-                                        [0, 0, 1, -0.5],
-                                        [0, 0, 0, 1]])
+                                             [0, 1, 0, 1],
+                                             [0, 0, 1, -0.5],
+                                             [0, 0, 0, 1]])
 
     def process(self, tv):
+        """
+            做了一堆坐标转换：原始数据 → 矩阵更新 → 坐标系转换 → 相对姿态计算 → 手指数据转换 → 返回标准化数据
+            返回5个经过处理的数据：
+                head_mat: 标准化后的头部姿态矩阵
+                rel_left_wrist_mat: 左手相对于头部的姿态矩阵
+                rel_right_wrist_mat: 右手相对于头部的姿态矩阵
+                rel_left_fingers: 左手手指关节点（相对于手腕）
+                rel_right_fingers: 右手手指关节点（相对于手腕）
+        """
         self.vuer_head_mat = mat_update(self.vuer_head_mat, tv.head_matrix.copy())
         self.vuer_right_wrist_mat = mat_update(self.vuer_right_wrist_mat, tv.right_hand.copy())
         self.vuer_left_wrist_mat = mat_update(self.vuer_left_wrist_mat, tv.left_hand.copy())
@@ -70,6 +79,7 @@ class VuerPreprocessor:
         rel_right_fingers = fast_mat_inv(right_wrist_mat) @ right_fingers
         rel_left_fingers = (hand2inspire.T @ rel_left_fingers)[0:3, :].T
         rel_right_fingers = (hand2inspire.T @ rel_right_fingers)[0:3, :].T
+        
         all_fingers = np.concatenate([rel_left_fingers, rel_right_fingers], axis=0)
 
         return all_fingers

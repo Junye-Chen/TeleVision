@@ -12,11 +12,13 @@ import pickle
 
 if __name__ == '__main__':
 
-    root = "../data/recordings"
-    exp_name = "00-can-sorting"
-    episode_name = "processed_episode_0.hdf5"
+    root = "/home/sense/workspace/TeleVision/data"
+    exp_name = "can-sorting"
+    episode_name = "episode_0.hdf5"
     episode_path = Path(root) / exp_name / "processed" / episode_name
-
+    print(episode_path)
+    # /home/sense/workspace/TeleVision/data/can-sorting/episode_0.hdf5
+    
     data = h5py.File(str(episode_path), 'r')
     actions = np.array(data['qpos_action'])
     data.close()

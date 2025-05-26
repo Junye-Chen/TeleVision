@@ -8,6 +8,11 @@ import asyncio
 from webrtc.zed_server import *
 
 class OpenTeleVision:
+    """
+        VR设备 → Vuer框架 → 事件处理 → 共享内存 → 遥操作系统
+                                  ↓
+                               图像流输出
+    """
     def __init__(self, img_shape, shm_name, queue, toggle_streaming, stream_mode="image", cert_file="./cert.pem", key_file="./key.pem", ngrok=False, port=0):
         # self.app=Vuer()
         self.img_shape = (img_shape[0], 2*img_shape[1], 3)
@@ -20,8 +25,10 @@ class OpenTeleVision:
             # print(f'port={port}')
             # self.app = Vuer(host='0.0.0.0', cert=cert_file, key=key_file, queries=dict(grid=False), queue_len=3, port=port)
 
+        # 注册事件处理，事件触发函数得到数据
         self.app.add_handler("HAND_MOVE")(self.on_hand_move)
         self.app.add_handler("CAMERA_MOVE")(self.on_cam_move)
+
         if stream_mode == "image":
             existing_shm = shared_memory.SharedMemory(name=shm_name)
             self.img_array = np.ndarray((self.img_shape[0], self.img_shape[1], 3), dtype=np.uint8, buffer=existing_shm.buf)
@@ -31,13 +38,14 @@ class OpenTeleVision:
         else:
             raise ValueError("stream_mode must be either 'webrtc' or 'image'")
 
+        # 初始化共享内存    # 多进程共享内存对象
         self.left_hand_shared = Array('d', 16, lock=True)
         self.right_hand_shared = Array('d', 16, lock=True)
         self.left_landmarks_shared = Array('d', 75, lock=True)
-        self.right_landmarks_shared = Array('d', 75, lock=True)
-        
+        self.right_landmarks_shared = Array('d', 75, lock=True)        
         self.head_matrix_shared = Array('d', 16, lock=True)
         self.aspect_shared = Value('d', 1.0, lock=True)
+
         if stream_mode == "webrtc":
             # webrtc server
             if Args.verbose:
@@ -71,6 +79,7 @@ class OpenTeleVision:
             self.webrtc_process.start()
             # web.run_app(app, host="0.0.0.0", port=8080, ssl_context=ssl_context)
 
+        # 启动子进程
         self.process = Process(target=self.run)
         self.process.daemon = True
         self.process.start()
@@ -88,8 +97,8 @@ class OpenTeleVision:
             #     self.head_matrix_shared[:] = event.value["camera"]["matrix"]
             # with self.aspect_shared.get_lock():
             #     self.aspect_shared.value = event.value['camera']['aspect']
-            self.head_matrix_shared[:] = event.value["camera"]["matrix"]
-            self.aspect_shared.value = event.value['camera']['aspect']
+            self.head_matrix_shared[:] = event.value["camera"]["matrix"]  # 4x4相机矩阵
+            self.aspect_shared.value = event.value['camera']['aspect']  # 宽高比
         except:
             pass
         # self.head_matrix = np.array(event.value["camera"]["matrix"]).reshape(4, 4, order="F")
@@ -106,13 +115,14 @@ class OpenTeleVision:
             #     self.left_landmarks_shared[:] = np.array(event.value["leftLandmarks"]).flatten()
             # with self.right_landmarks_shared.get_lock():
             #     self.right_landmarks_shared[:] = np.array(event.value["rightLandmarks"]).flatten()
-            self.left_hand_shared[:] = event.value["leftHand"]
+            self.left_hand_shared[:] = event.value["leftHand"]  # 4x4变换矩阵
             self.right_hand_shared[:] = event.value["rightHand"]
-            self.left_landmarks_shared[:] = np.array(event.value["leftLandmarks"]).flatten()
+            self.left_landmarks_shared[:] = np.array(event.value["leftLandmarks"]).flatten()  # 25x3关键点
             self.right_landmarks_shared[:] = np.array(event.value["rightLandmarks"]).flatten()
         except: 
             pass
     
+    # WebRTC流模式
     async def main_webrtc(self, session, fps=60):
         session.set @ DefaultScene(frameloop="always")
         session.upsert @ Hands(fps=fps, stream=True, key="hands", showLeft=False, showRight=False)
@@ -134,6 +144,8 @@ class OpenTeleVision:
             start = time.time()
             # print(end_time - start)
             # aspect = self.aspect_shared.value
+
+             # 从共享内存读取图像数据
             display_image = self.img_array
 
             # session.upsert(
@@ -154,8 +166,9 @@ class OpenTeleVision:
             # to="bgChildren",
             # )
 
+            # VR渲染
             session.upsert(
-            [ImageBackground(
+            [ImageBackground(  # 左眼
                 # Can scale the images down.
                 display_image[::2, :self.img_width],
                 # display_image[:self.img_height:2, ::2],
@@ -173,7 +186,7 @@ class OpenTeleVision:
                 layers=1, 
                 alphaSrc="./vinette.jpg"
             ),
-            ImageBackground(
+            ImageBackground(  # 右眼
                 # Can scale the images down.
                 display_image[::2, self.img_width:],
                 # display_image[self.img_height::2, ::2],

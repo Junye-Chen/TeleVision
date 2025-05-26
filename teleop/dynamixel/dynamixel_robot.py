@@ -17,7 +17,7 @@ class DynamixelRobot(Robot):
         self,
         joint_ids: Sequence[int],
         joint_offsets: Optional[Sequence[float]] = None,
-        joint_signs: Optional[Sequence[int]] = None,
+        joint_signs: Optional[Sequence[int]] = None,  # 角度方向
         real: bool = False,
         port: str = "/dev/ttyUSB0",
         baudrate: int = 57600,
@@ -73,10 +73,11 @@ class DynamixelRobot(Robot):
         assert np.all(
             np.abs(self._joint_signs) == 1
         ), f"joint_signs: {self._joint_signs}"
+        
 
         # when called in gello_agent, real == True, used to do test
         if real:
-            self._driver = DynamixelDriver(joint_ids, port=port, baudrate=baudrate)
+            self._driver = DynamixelDriver(joint_ids, port=port, baudrate=baudrate)  # 真实机器人驱动
             # we dault set the torque_mode(False)
             self._driver.set_torque_mode(False)
         else:

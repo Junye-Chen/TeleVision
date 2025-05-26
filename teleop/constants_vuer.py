@@ -1,5 +1,7 @@
 import numpy as np
 
+# 坐标变换
+
 tip_indices = [4, 9, 14, 19, 24]
 
 hand2inspire = np.array([[0, -1, 0, 0],

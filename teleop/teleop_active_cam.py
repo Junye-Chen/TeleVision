@@ -19,8 +19,9 @@ crop_size_w = 1
 crop_size_h = 0
 resolution_cropped = (resolution[0] - crop_size_h, resolution[1] - 2 * crop_size_w)
 
+# 机器人初始化:
 agent = DynamixelAgent(port="/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FT8IT033-if00-port0")
-agent._robot.set_torque_mode(True)
+agent._robot.set_torque_mode(True)  # 扭矩模式为开启
 
 # Create a Camera object
 zed = sl.Camera()
@@ -42,6 +43,7 @@ image_left = sl.Mat()
 image_right = sl.Mat()
 runtime_parameters = sl.RuntimeParameters()
 
+# 共享内存和进程间通信设置
 img_shape = (resolution_cropped[0], 2 * resolution_cropped[1], 3)
 img_height, img_width = resolution_cropped[:2]
 shm = shared_memory.SharedMemory(create=True, size=np.prod(img_shape) * np.uint8().itemsize)
@@ -53,6 +55,8 @@ tv = OpenTeleVision(resolution_cropped, shm.name, image_queue, toggle_streaming)
 while True:
     start = time.time()
 
+    # 头部姿态控制
+    # TODO：但是缺少对于其他关节的控制（手部关节）
     head_mat = grd_yup2grd_zup[:3, :3] @ tv.head_matrix[:3, :3] @ grd_yup2grd_zup[:3, :3].T
     if np.sum(head_mat) == 0:
         head_mat = np.eye(3)
@@ -68,6 +72,8 @@ while True:
         # exit()
         pass
 
+    # 图像采集和处理
+    # TODO：换成我们的
     if zed.grab(runtime_parameters) == sl.ERROR_CODE.SUCCESS:
         zed.retrieve_image(image_left, sl.VIEW.LEFT)
         zed.retrieve_image(image_right, sl.VIEW.RIGHT)
@@ -82,5 +88,6 @@ while True:
     np.copyto(img_array, rgb)
 
     end = time.time()
-    # print(1/(end-start))
+    print(1/(end-start))
+    
 zed.close()
