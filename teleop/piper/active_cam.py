@@ -3,14 +3,13 @@ import time
 from dataclasses import dataclass
 from typing import Dict, Optional, Sequence, Tuple
 import numpy as np
+
 from .agent import Agent
-from .piper_robot import DynamixelRobot
-# from agent import Agent
-# from dynamixel_robot import DynamixelRobot
+from .piper_robot import PiperRobot
 
 
 @dataclass
-class DynamixelRobotConfig:
+class PiperRobotConfig:
     joint_ids: Sequence[int]
     """The joint ids of dynamixel robot. Usually (1, 2, 3 ...)."""
 
@@ -30,8 +29,9 @@ class DynamixelRobotConfig:
 
     def make_robot(
         self, port: str = "/dev/ttyUSB0", start_joints: Optional[np.ndarray] = None
-    ) -> DynamixelRobot:
-        return DynamixelRobot(
+    ) -> PiperRobot:
+        
+        return PiperRobot(
             joint_ids=self.joint_ids,
             joint_offsets=list(self.joint_offsets),
             real=True,
@@ -42,39 +42,39 @@ class DynamixelRobotConfig:
         )
 
 # Can put multi robot into the dic, note that the calibration info shoule be put here
-PORT_CONFIG_MAP: Dict[str, DynamixelRobotConfig] = {
+PORT_CONFIG_MAP: Dict[str, PiperRobotConfig] = {
     #! for camera mounta
-    "/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FT8IT033-if00-port0": DynamixelRobotConfig(
+    "/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FT8IT033-if00-port0": PiperRobotConfig(
         joint_ids=(1, 2),
         joint_offsets=(
             2*np.pi/2, 
             2*np.pi/2, 
         ),
         joint_signs=(-1, -1),
-        gripper_config=None,
+        gripper_config=None,  # 夹爪的最大最小值配置
     ), 
 
 }
 
 # general we only input port into the class, other info is stored in the dic
-class DynamixelAgent(Agent):
+class PiperAgent(Agent):
     def __init__(
         self,
         port: str,
-        dynamixel_config: Optional[DynamixelRobotConfig] = None,
+        piper_config: Optional[PiperRobotConfig] = None,
         start_joints: Optional[np.ndarray] = None,
         cap_num: int = 42,
     ):
         #! init dynamixel robot setting
         # use the config to make the robot
-        if dynamixel_config is not None:
-            self._robot = dynamixel_config.make_robot(
+        if piper_config is not None:
+            self._robot = piper_config.make_robot(
                 port=port, start_joints=start_joints
             )
         # find the info auto
         else:
             # check port 
-            assert os.path.exists(port), port
+            # assert os.path.exists(port), port
             assert port in PORT_CONFIG_MAP, f"Port {port} not in config map"
 
             # use port to gain config
@@ -85,8 +85,9 @@ class DynamixelAgent(Agent):
         return self._robot.get_joint_state()
     
     
+
 if __name__ == "__main__":
-    agent = DynamixelAgent(port="/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FT8IST6E-if00-port0")
+    agent = PiperAgent(port="/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FT8IST6E-if00-port0")
 
     agent._robot.set_torque_mode(True)
 

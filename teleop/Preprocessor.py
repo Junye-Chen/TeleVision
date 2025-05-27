@@ -11,16 +11,17 @@ class VuerPreprocessor:
                                        [0, 1, 0, 1.5],
                                        [0, 0, 1, -0.2],
                                        [0, 0, 0, 1]])
-        self.vuer_right_wrist_mat = np.array([[1, 0, 0, 0.5],
-                                              [0, 1, 0, 1],
-                                              [0, 0, 1, -0.5],
-                                              [0, 0, 0, 1]])
         self.vuer_left_wrist_mat = np.array([[1, 0, 0, -0.5],
                                              [0, 1, 0, 1],
                                              [0, 0, 1, -0.5],
                                              [0, 0, 0, 1]])
+        self.vuer_right_wrist_mat = np.array([[1, 0, 0, 0.5],
+                                              [0, 1, 0, 1],
+                                              [0, 0, 1, -0.5],
+                                              [0, 0, 0, 1]])
+        
 
-    def process(self, tv):
+    def process(self, tv, origin=False):
         """
             做了一堆坐标转换：原始数据 → 矩阵更新 → 坐标系转换 → 相对姿态计算 → 手指数据转换 → 返回标准化数据
             返回5个经过处理的数据：
@@ -40,10 +41,10 @@ class VuerPreprocessor:
         left_wrist_mat = grd_yup2grd_zup @ self.vuer_left_wrist_mat @ fast_mat_inv(grd_yup2grd_zup)
 
         rel_left_wrist_mat = left_wrist_mat @ hand2inspire
-        rel_left_wrist_mat[0:3, 3] = rel_left_wrist_mat[0:3, 3] - head_mat[0:3, 3]
+        rel_left_wrist_mat[0:3, 3] = rel_left_wrist_mat[0:3, 3] - head_mat[0:3, 3] if not origin else rel_left_wrist_mat[0:3, 3]
 
         rel_right_wrist_mat = right_wrist_mat @ hand2inspire  # wTr = wTh @ hTr
-        rel_right_wrist_mat[0:3, 3] = rel_right_wrist_mat[0:3, 3] - head_mat[0:3, 3]
+        rel_right_wrist_mat[0:3, 3] = rel_right_wrist_mat[0:3, 3] - head_mat[0:3, 3] if not origin else rel_right_wrist_mat[0:3, 3]
 
         # homogeneous
         left_fingers = np.concatenate([tv.left_landmarks.copy().T, np.ones((1, tv.left_landmarks.shape[0]))])

@@ -58,6 +58,7 @@ class VuerTeleop:
 
         self.processor = VuerPreprocessor()  # 用来求解不同的部位坐标
 
+        # 加载重建模型
         RetargetingConfig.set_default_urdf_dir('../assets')
 
         with Path(config_file_path).open('r') as f:

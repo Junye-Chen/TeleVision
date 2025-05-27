@@ -35,6 +35,8 @@ class PiperRobot(Robot):
             assert joint_offsets is not None
             assert joint_signs is not None
 
+            # TODO: 设置夹爪的最大最小角度范围
+
             joint_ids = tuple(joint_ids) + (gripper_config[0],)
             joint_offsets = tuple(joint_offsets) + (0.0,)
             # joint_signs = tuple(joint_signs) + (1,)
@@ -153,8 +155,8 @@ class PiperRobot(Robot):
         set_value = self.map_to_valid_range(set_value)
         # print("set value                 : ", [f"{x:.3f}" for x in set_value])
         
-        self._driver.set_joints(set_value)
-        # self._driver.set_gripper()  # optional
+        self._driver.set_joints(set_value[:-1])
+        self._driver.set_gripper(set_value[-1], 1000)  # optional
 
     def get_observations(self) -> Dict[str, np.ndarray]:
         return {"joint_state": self.get_joint_state()}

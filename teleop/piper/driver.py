@@ -121,6 +121,9 @@ class PiperDriver(PiperDriverProtocol):
         self.piper.ConnectPort() # 连接串口
 
 
+    
+
+
     def set_joints(self, joint_angles: Sequence[float]):
         """
             发送前需要切换机械臂模式为关节控制模式
@@ -147,6 +150,7 @@ class PiperDriver(PiperDriverProtocol):
     def set_gripper(self, gripper_angle: float, gripper_effort: float):
         """
             发送前需要切换机械臂模式为关节控制模式
+            gripper_effort: 范围0-5000
         """
         
         # 关节控制模式
@@ -159,6 +163,16 @@ class PiperDriver(PiperDriverProtocol):
         gripper_effort = int(gripper_effort * 1000)
 
         self.piper.GripperCtrl(gripper_angle, gripper_effort, gripper_code=0x01)
+
+
+    def get_joints(self) -> np.ndarray:
+        # TODO: 应该返回一个弧度角 np.ndarray，最后一维是夹爪的角度
+
+        joints = self.piper.GetArmJointMsgs()  # TODO: 这个具体返回什么我还没搞清楚
+        gripper = self.piper.GetArmGripperMsgs()  # TODO: 这个具体返回什么我还没搞清楚
+        joints = np.append(joints, gripper)
+
+        return joints  # 7维数组
 
 
     # def torque_enabled(self) -> bool:
@@ -212,16 +226,6 @@ class PiperDriver(PiperDriverProtocol):
     #                     )
     #             self._joint_angles = _joint_angles
     #         # self._groupSyncRead.clearParam() # TODO what does this do? should i add it
-
-
-    def get_joints(self) -> np.ndarray:
-        # TODO: 应该返回一个弧度角 np.ndarray，最后一维是夹爪的角度
-
-        joints = self.piper.GetArmJointMsgs()  # TODO: 这个具体返回什么我还没搞清楚
-        gripper = self.piper.GetArmGripperMsgs()  # TODO: 这个具体返回什么我还没搞清楚
-        joints = np.append(joints, gripper)
-
-        return joints
 
 
     def close(self):

@@ -56,13 +56,12 @@ while True:
     start = time.time()
 
     # 头部姿态控制
-    # TODO：但是缺少对于其他关节的控制（手部关节）
     head_mat = grd_yup2grd_zup[:3, :3] @ tv.head_matrix[:3, :3] @ grd_yup2grd_zup[:3, :3].T
     if np.sum(head_mat) == 0:
         head_mat = np.eye(3)
     head_rot = rotations.quaternion_from_matrix(head_mat[0:3, 0:3])
     try:
-        ypr = rotations.euler_from_quaternion(head_rot, 2, 1, 0, False)
+        ypr = rotations.euler_from_quaternion(head_rot, 2, 1, 0, False)  # (3,) [-pi, pi]
         # print(ypr)
         # agent._robot.command_joint_state([0., 0.4])
         agent._robot.command_joint_state(ypr[:2])
@@ -73,7 +72,6 @@ while True:
         pass
 
     # 图像采集和处理
-    # TODO：换成我们的
     if zed.grab(runtime_parameters) == sl.ERROR_CODE.SUCCESS:
         zed.retrieve_image(image_left, sl.VIEW.LEFT)
         zed.retrieve_image(image_right, sl.VIEW.RIGHT)
