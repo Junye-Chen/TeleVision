@@ -2,6 +2,8 @@ from typing import Any, Dict, Protocol
 
 import numpy as np
 
+# 这个不用改
+
 class Agent(Protocol):
     def act(self, obs: Dict[str, Any]) -> np.ndarray:
         """Returns an action given an observation.
@@ -29,7 +31,6 @@ class BimanualAgent(Agent):
         self.agent_right = agent_right
 
     def act(self, obs: Dict[str, Any]) -> np.ndarray:
-        # 返回左右手的关节状态
         left_obs = {}
         right_obs = {}
         for key, val in obs.items():

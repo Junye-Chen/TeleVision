@@ -16,6 +16,10 @@ import concurrent.futures
 from pathlib import Path
 import argparse
 
+
+# 用于处理立体视觉数据（SVO文件）和机器人状态数据（HDF5文件）
+# 从这些文件中提取图像和状态数据，进行时间戳匹配，并将处理后的数据保存为新的HDF5文件。
+
 def load_svo(path, crop_size_h=240, crop_size_w=320):
     input_file = path + ".svo"
     # import ipdb; ipdb.set_trace()

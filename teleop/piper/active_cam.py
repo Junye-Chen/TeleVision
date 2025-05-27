@@ -4,12 +4,10 @@ from dataclasses import dataclass
 from typing import Dict, Optional, Sequence, Tuple
 import numpy as np
 from .agent import Agent
-from .dynamixel_robot import DynamixelRobot
+from .piper_robot import DynamixelRobot
 # from agent import Agent
 # from dynamixel_robot import DynamixelRobot
 
-
-# 控制Dynamixel机器人的配置和代理系统
 
 @dataclass
 class DynamixelRobotConfig:
@@ -30,8 +28,7 @@ class DynamixelRobotConfig:
         assert len(self.joint_ids) == len(self.joint_offsets)
         assert len(self.joint_ids) == len(self.joint_signs)
 
-    # 创建DynamixelRobot实例
-    def make_robot(  # 
+    def make_robot(
         self, port: str = "/dev/ttyUSB0", start_joints: Optional[np.ndarray] = None
     ) -> DynamixelRobot:
         return DynamixelRobot(
@@ -46,8 +43,6 @@ class DynamixelRobotConfig:
 
 # Can put multi robot into the dic, note that the calibration info shoule be put here
 PORT_CONFIG_MAP: Dict[str, DynamixelRobotConfig] = {
-    # 存储不同串口设备对应的机器人配置
-
     #! for camera mounta
     "/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FT8IT033-if00-port0": DynamixelRobotConfig(
         joint_ids=(1, 2),
@@ -61,9 +56,7 @@ PORT_CONFIG_MAP: Dict[str, DynamixelRobotConfig] = {
 
 }
 
-
 # general we only input port into the class, other info is stored in the dic
-# 只输入端口创建机器人，其他信息在DynamixelRobotConfig中
 class DynamixelAgent(Agent):
     def __init__(
         self,
@@ -74,14 +67,11 @@ class DynamixelAgent(Agent):
     ):
         #! init dynamixel robot setting
         # use the config to make the robot
-        # 直接传入配置对象(dynamixel_config)
         if dynamixel_config is not None:
             self._robot = dynamixel_config.make_robot(
                 port=port, start_joints=start_joints
             )
-
         # find the info auto
-        # 如果dynamixel_config为None，则从PORT_CONFIG_MAP中获取配置
         else:
             # check port 
             assert os.path.exists(port), port
@@ -92,10 +82,9 @@ class DynamixelAgent(Agent):
             self._robot = config.make_robot(port=port, start_joints=start_joints)
 
     def act(self, obs: Dict[str, np.ndarray]) -> np.ndarray: 
-        # 返回当前关节状态
         return self._robot.get_joint_state()
     
-
+    
 if __name__ == "__main__":
     agent = DynamixelAgent(port="/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FT8IST6E-if00-port0")
 

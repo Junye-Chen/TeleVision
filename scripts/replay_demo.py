@@ -16,6 +16,8 @@ import torch
 from torchvision.transforms import v2
 from sklearn.decomposition import PCA
 
+# 仿真机器人动作回放
+
 class Player:
     def __init__(self, dt=1/60):
         self.dt = dt
@@ -148,6 +150,7 @@ class Player:
         qpos[48:51] = action[25] * np.array([1, 1.6, 2.4])
 
         return qpos
+    
 
 if __name__ == '__main__':
 

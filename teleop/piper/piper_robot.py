@@ -10,8 +10,8 @@ from .driver import DynamixelDriver,DynamixelDriverProtocol,FakeDynamixelDriver
 # from driver import DynamixelDriver,DynamixelDriverProtocol,FakeDynamixelDriver
 
 
-class DynamixelRobot(Robot):
-    """A class representing a UR robot."""
+class PiperRobot(Robot):
+    """A class representing a piper robot."""
 
     def __init__(
         self,
@@ -35,13 +35,13 @@ class DynamixelRobot(Robot):
             assert joint_offsets is not None
             assert joint_signs is not None
 
-            joint_ids = tuple(joint_ids) + (gripper_config[0],)
-            joint_offsets = tuple(joint_offsets) + (0.0,)
-            joint_signs = tuple(joint_signs) + (1,)
-            self.gripper_open_close = (
-                gripper_config[1] * np.pi / 180,
-                gripper_config[2] * np.pi / 180,
-            )
+            # joint_ids = tuple(joint_ids) + (gripper_config[0],)
+            # joint_offsets = tuple(joint_offsets) + (0.0,)
+            # joint_signs = tuple(joint_signs) + (1,)
+            # self.gripper_open_close = (
+            #     gripper_config[1] * np.pi / 180,
+            #     gripper_config[2] * np.pi / 180,
+            # )
         else:
             self.gripper_open_close = None
 
@@ -80,10 +80,8 @@ class DynamixelRobot(Robot):
             self._driver = DynamixelDriver(joint_ids, port=port, baudrate=baudrate)  # 真实机器人驱动
             # we dault set the torque_mode(False)
             self._driver.set_torque_mode(False)
-
         else:
             self._driver = FakeDynamixelDriver(joint_ids)
-            
             
         self._torque_on = False
         self._last_pos = None
@@ -139,10 +137,12 @@ class DynamixelRobot(Robot):
 
         new_pos = np.append(pos, 0)
         return new_pos
+    
 
     def map_to_valid_range(self, radians_array):
         mapped_radians = np.mod(radians_array, 2 * np.pi)
         return mapped_radians
+    
 
     def command_joint_state(self, joint_state: np.ndarray) -> None:
         # print("command                   : ", [f"{x:.3f}" for x in joint_state])
@@ -150,14 +150,17 @@ class DynamixelRobot(Robot):
         # print("_set value                 : ", [f"{x:.3f}" for x in set_value])
         set_value = self.map_to_valid_range(set_value)
         # print("set value                 : ", [f"{x:.3f}" for x in set_value])
+        
         self._driver.set_joints(set_value)
+        # self._driver.set_gripper()  # optional
 
-    # 设置扭矩模式
-    def set_torque_mode(self, mode: bool):
-        if mode == self._torque_on:
-            return
-        self._driver.set_torque_mode(mode)
-        self._torque_on = mode
+
+    # def set_torque_mode(self, mode: bool):
+    #     if mode == self._torque_on:
+    #         return
+    #     self._driver.set_torque_mode(mode)
+    #     self._torque_on = mode
+
 
     def get_observations(self) -> Dict[str, np.ndarray]:
         return {"joint_state": self.get_joint_state()}
