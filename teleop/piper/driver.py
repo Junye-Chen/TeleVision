@@ -34,7 +34,7 @@ TORQUE_ENABLE = 1
 TORQUE_DISABLE = 0
 
 
-class DynamixelDriverProtocol(Protocol):
+class PiperDriverProtocol(Protocol):
     def set_joints(self, joint_angles: Sequence[float]):
         """Set the joint angles for the Dynamixel servos.
 
@@ -71,7 +71,8 @@ class DynamixelDriverProtocol(Protocol):
         """Close the driver."""
 
 
-class FakeDynamixelDriver(DynamixelDriverProtocol):
+# TODO: 还没改完
+class FakePiperDriver(PiperDriverProtocol):
     def __init__(self, ids: Sequence[int]):
         self._ids = ids
         self._joint_angles = np.zeros(len(ids), dtype=int)
@@ -99,7 +100,7 @@ class FakeDynamixelDriver(DynamixelDriverProtocol):
         pass
 
 
-class DynamixelDriver(DynamixelDriverProtocol):
+class PiperDriver(PiperDriverProtocol):
     def __init__(
         self, ids: Sequence[int], port: str = "/dev/ttyUSB0", baudrate: int = 57600
     ):
@@ -214,9 +215,13 @@ class DynamixelDriver(DynamixelDriverProtocol):
 
 
     def get_joints(self) -> np.ndarray:
+        # TODO: 应该返回一个弧度角 np.ndarray，最后一维是夹爪的角度
 
-        return self.piper.GetArmJointMsgs()  # TODO: 应该返回一个弧度角
-        # TODO: 这里应该返回夹爪的角度
+        joints = self.piper.GetArmJointMsgs()  # TODO: 这个具体返回什么我还没搞清楚
+        gripper = self.piper.GetArmGripperMsgs()  # TODO: 这个具体返回什么我还没搞清楚
+        joints = np.append(joints, gripper)
+
+        return joints
 
 
     def close(self):
@@ -226,15 +231,15 @@ class DynamixelDriver(DynamixelDriverProtocol):
         # self._portHandler.closePort()
 
 
-def main():
+
+if __name__ == "__main__":
     # Set the port, baudrate, and servo IDs
     ids = [1,2]
-
     # Create a DynamixelDriver instance
     try:
-        driver = DynamixelDriver(ids)
+        driver = PiperDriver(ids)
     except FileNotFoundError:
-        driver = DynamixelDriver(ids, port="/dev/cu.usbserial-FT7WBMUB")
+        driver = PiperDriver(ids, port="/dev/cu.usbserial-FT7WBMUB")
 
     driver.set_torque_mode(True)
     driver.set_torque_mode(False)
@@ -247,13 +252,3 @@ def main():
             # print(f"Joint angles for IDs {ids[1]}: {joint_angles[1]}")
     except KeyboardInterrupt:
         driver.close()
-    
-    # driver.set_torque_mode(True)
-    # joint_angles = driver.get_joints()
-    # print(f"Joint angles for IDs {ids}: {joint_angles}")
-    # driver.set_joints([6, 6])
-    # driver.set_joints([7, 8])
-
-
-if __name__ == "__main__":
-    main()

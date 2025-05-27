@@ -5,7 +5,7 @@ import numpy as np
 # from robots.robot import Robot
 import sys
 from .robot import Robot
-from .driver import DynamixelDriver,DynamixelDriverProtocol,FakeDynamixelDriver
+from .driver import PiperDriver,PiperDriverProtocol,FakePiperDriver
 # from robot import Robot
 # from driver import DynamixelDriver,DynamixelDriverProtocol,FakeDynamixelDriver
 
@@ -21,7 +21,7 @@ class PiperRobot(Robot):
         real: bool = False,
         port: str = "/dev/ttyUSB0",
         baudrate: int = 57600,
-        gripper_config: Optional[Tuple[int, float, float]] = None,
+        gripper_config: Optional[Tuple[int, float, float]] = None,  # 编号，最大夹爪角度，最小夹爪角度
         start_joints: Optional[np.ndarray] = None,
     ):
         
@@ -35,10 +35,10 @@ class PiperRobot(Robot):
             assert joint_offsets is not None
             assert joint_signs is not None
 
-            # joint_ids = tuple(joint_ids) + (gripper_config[0],)
-            # joint_offsets = tuple(joint_offsets) + (0.0,)
+            joint_ids = tuple(joint_ids) + (gripper_config[0],)
+            joint_offsets = tuple(joint_offsets) + (0.0,)
             # joint_signs = tuple(joint_signs) + (1,)
-            # self.gripper_open_close = (
+            # self.gripper_open_close = (   # 夹爪最大活动范围，转成弧度
             #     gripper_config[1] * np.pi / 180,
             #     gripper_config[2] * np.pi / 180,
             # )
@@ -49,7 +49,7 @@ class PiperRobot(Robot):
 
         # set joint config
         self._joint_ids = joint_ids
-        self._driver: DynamixelDriverProtocol
+        self._driver: PiperDriverProtocol
 
         if joint_offsets is None:
             self._joint_offsets = np.zeros(len(joint_ids))
@@ -77,16 +77,17 @@ class PiperRobot(Robot):
 
         # when called in gello_agent, real == True, used to do test
         if real:
-            self._driver = DynamixelDriver(joint_ids, port=port, baudrate=baudrate)  # 真实机器人驱动
+            self._driver = PiperDriver(joint_ids, port=port, baudrate=baudrate)  # 真实机器人驱动
             # we dault set the torque_mode(False)
-            self._driver.set_torque_mode(False)
+            # self._driver.set_torque_mode(False)
         else:
-            self._driver = FakeDynamixelDriver(joint_ids)
+            self._driver = FakePiperDriver(joint_ids)
             
         self._torque_on = False
         self._last_pos = None
         self._alpha = 0.99
 
+        # TODO ：处理给定初始位置的情况
         #! this part might important! need to check if the robot start at different joints 
         if start_joints is not None:
             # loop through all joints and add +- 2pi to the joint offsets to get the closest to start joints
@@ -115,6 +116,7 @@ class PiperRobot(Robot):
     def num_dofs(self) -> int:
         return len(self._joint_ids)
 
+
     #! now the joint num is different
     def get_joint_state(self) -> np.ndarray:
         pos = (self._driver.get_joints() - self._joint_offsets) * self._joint_signs
@@ -135,7 +137,7 @@ class PiperRobot(Robot):
             pos = self._last_pos * (1 - self._alpha) + pos * self._alpha
             self._last_pos = pos
 
-        new_pos = np.append(pos, 0)
+        new_pos = np.append(pos, 0)  # 在位置数组末尾追加一个0（可能是为了兼容某些接口要求）
         return new_pos
     
 
@@ -154,15 +156,14 @@ class PiperRobot(Robot):
         self._driver.set_joints(set_value)
         # self._driver.set_gripper()  # optional
 
+    def get_observations(self) -> Dict[str, np.ndarray]:
+        return {"joint_state": self.get_joint_state()}
+    
 
-    # def set_torque_mode(self, mode: bool):
+        # def set_torque_mode(self, mode: bool):
     #     if mode == self._torque_on:
     #         return
     #     self._driver.set_torque_mode(mode)
     #     self._torque_on = mode
 
-
-    def get_observations(self) -> Dict[str, np.ndarray]:
-        return {"joint_state": self.get_joint_state()}
-    
 
