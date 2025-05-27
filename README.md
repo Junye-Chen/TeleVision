@@ -30,6 +30,10 @@ Immersive Active Visual Feedback</h1>
 <img src="./img/main.webp" width="80%"/>
 </p>
 
+
+# real robot teleoperation
+我们的实际控制代码在/home/sense/workspace/TeleVision/teleop/teleop_active_real.py
+
 ## Introduction
 This code contains implementation for teleoperation and imitation learning of Open-TeleVision.
 
